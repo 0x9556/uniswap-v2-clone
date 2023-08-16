@@ -3,20 +3,14 @@ pragma solidity ^0.8.17;
 
 import "./Pair.sol";
 import "./interfaces/IPair.sol";
+import "./interfaces/IFactory.sol";
 
-contract Factory {
+contract Factory is IFactory {
     address public feeTo;
     address public feeToSetter;
 
     mapping(address => mapping(address => address)) public pairs;
     address[] public allPairs;
-
-    event PairCreated(
-        address indexed token0,
-        address indexed token1,
-        address pair,
-        uint256 length
-    );
 
     constructor(address _feeTosetter) {
         feeToSetter = _feeTosetter;
@@ -26,14 +20,14 @@ contract Factory {
         address tokenA,
         address tokenB
     ) external returns (address pair) {
-        require(tokenA != tokenB, "IdenticalAddresses");
+        if (tokenA == tokenB) revert IdenticalAddress();
 
         (address token0, address token1) = tokenA < tokenB
             ? (tokenA, tokenB)
             : (tokenB, tokenA);
 
-        require(token0 != address(0), "ZeroAddress");
-        require(pairs[token0][token1] == address(0), "PairExists");
+        if (token0 == address(0)) revert ZeroAddress();
+        if (pairs[token0][token1] != address(0)) revert PairExist();
 
         bytes memory bytecode = type(Pair).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
@@ -53,12 +47,12 @@ contract Factory {
     }
 
     function setFeeTo(address _feeTo) external {
-        require(msg.sender == feeToSetter, "FORBIDDEN");
+        if (msg.sender != feeToSetter) revert Forbidden();
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external {
-        require(msg.sender == feeToSetter, "FORBIDDEN");
+        if (msg.sender != feeToSetter) revert Forbidden();
         feeToSetter = _feeToSetter;
     }
 }
