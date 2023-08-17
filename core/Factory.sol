@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.21;
 
 import "./Pair.sol";
 import "./interfaces/IPair.sol";
@@ -14,6 +14,10 @@ contract Factory is IFactory {
 
     constructor(address _feeTosetter) {
         feeToSetter = _feeTosetter;
+    }
+
+    function allPairsLength() external view returns (uint) {
+        return allPairs.length;
     }
 
     function createPair(

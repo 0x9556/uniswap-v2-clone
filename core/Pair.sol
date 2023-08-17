@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.21;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./LPERC20.sol";
 import "./libraries/Q112X112.sol";
 import "./interfaces/ISwapCallee.sol";
+import "./interfaces/IFactory.sol";
 import "./interfaces/IPair.sol";
 
 contract Pair is IPair, LPERC20, ReentrancyGuard {
@@ -48,6 +49,7 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
         uint balance1 = IERC20(token1).balanceOf(address(this));
         uint amount0 = balance0 - _reserve0;
         uint amount1 = balance1 - _reserve1;
+        bool feeOn = _mintFee(_reserve0, _reserve1);
         uint _totalSupply = totalSupply;
 
         //calculate liquidity
@@ -66,7 +68,7 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
         _mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
-
+        if (feeOn) kLast = uint(reserve0) * uint(reserve1);
         emit Mint(msg.sender, amount0, amount1);
     }
 
@@ -215,5 +217,26 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
         blockTimestampLast = timestamp;
 
         emit Sync(reserve0, reserve1);
+    }
+
+    function _mintFee(
+        uint112 _reserve0,
+        uint112 _reserve1
+    ) private returns (bool feeOn) {
+        address feeTo = IFactory(factory).feeTo();
+        feeOn = feeTo != address(0);
+        uint _kLast = kLast;
+        if (feeOn) {
+            if (_kLast != 0) {
+                uint rootK = Math.sqrt(uint(_reserve0) * uint(_reserve1));
+                uint rootKLast = Math.sqrt(_kLast);
+                if (rootK > rootKLast) {
+                    uint numerator = totalSupply * (rootK - rootKLast);
+                    uint demoniator = rootK * 5 + rootKLast;
+                    uint liquidity = numerator / demoniator;
+                    if (liquidity > 0) _mint(feeTo, liquidity);
+                }
+            }
+        } else if (_kLast != 0) kLast = 0;
     }
 }
