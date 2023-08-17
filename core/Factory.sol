@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.21;
+pragma solidity ^0.8.17;
 
 import "./Pair.sol";
 import "./interfaces/IPair.sol";
