@@ -51,12 +51,12 @@ contract Factory is IFactory {
     }
 
     function setFeeTo(address _feeTo) external {
-        if (msg.sender != feeToSetter) revert Forbidden();
+        if (msg.sender != feeToSetter) revert Forbidden(msg.sender);
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external {
-        if (msg.sender != feeToSetter) revert Forbidden();
+        if (msg.sender != feeToSetter) revert Forbidden(msg.sender);
         feeToSetter = _feeToSetter;
     }
 }

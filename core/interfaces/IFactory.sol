@@ -2,7 +2,7 @@
 pragma solidity ^0.8.17;
 
 interface IFactory {
-    error Forbidden();
+    error Forbidden(address caller);
     error PairExist();
     error ZeroAddress();
     error IdenticalAddress();

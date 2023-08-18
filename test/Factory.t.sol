@@ -14,19 +14,51 @@ contract FactoryTest is Test {
     Factory factory;
 
     function setUp() public {
-        factory = new Factory(msg.sender);
+        factory = new Factory(address(this));
     }
 
     function test_feeTo_feeToSetter_allPairsLength() public {
         assertEq(factory.feeTo(), address(0));
-        assertEq(factory.feeToSetter(), msg.sender);
+        assertEq(factory.feeToSetter(), address(this));
         assertEq(factory.allPairsLength(), 0);
     }
 
     function testCreatePair() public {
         address create2Address = pairFor(address(factory), tokenA, tokenB);
         address pair = factory.createPair(tokenA, tokenB);
+
+        vm.expectRevert();
+        factory.createPair(tokenA, tokenB);
+        vm.expectRevert();
+        factory.createPair(tokenB, tokenA);
+
         assertEq(create2Address, pair);
+        assertEq(factory.pairs(tokenA, tokenB), pair);
+        assertEq(factory.pairs(tokenB, tokenA), pair);
+        assertEq(factory.allPairs(0), pair);
+        assertEq(factory.allPairsLength(), 1);
+
+        assertEq(Pair(pair).token0(), tokenA);
+        assertEq(Pair(pair).token1(), tokenB);
+        assertEq(Pair(pair).factory(), address(factory));
+    }
+
+    function testSetFeeTo() public {
+        vm.prank(msg.sender);
+        vm.expectRevert();
+        factory.setFeeTo(address(0));
+
+        factory.setFeeTo(msg.sender);
+        assertEq(factory.feeTo(), msg.sender);
+    }
+
+    function testSetFeeToSetter() public {
+        vm.prank(msg.sender);
+        vm.expectRevert();
+        factory.setFeeToSetter(address(msg.sender));
+
+        factory.setFeeToSetter(msg.sender);
+        assertEq(factory.feeToSetter(), msg.sender);
     }
 
     //internal
