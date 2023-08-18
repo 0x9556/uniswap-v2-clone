@@ -75,12 +75,14 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
     function burn(
         address to
     ) external nonReentrant returns (uint amount0, uint amount1) {
-        (uint112 reserve0_, uint112 reserve1_, ) = getReserves();
+        (uint112 _reserve0, uint112 _reserve1, ) = getReserves();
         address _token0 = token0;
         address _token1 = token1;
         uint balance0 = IERC20(_token0).balanceOf(address(this));
         uint balance1 = IERC20(_token1).balanceOf(address(this));
         uint liquidity = balanceOf[address(this)];
+
+        bool feeOn = _mintFee(_reserve0, _reserve1);
         uint _totalSupply = totalSupply;
         //calculate amount
         amount0 = (balance0 * liquidity) / _totalSupply;
@@ -95,8 +97,9 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
         balance0 = IERC20(_token0).balanceOf(address(this));
         balance1 = IERC20(_token1).balanceOf(address(this));
 
-        _update(balance0, balance1, reserve0_, reserve1_);
+        _update(balance0, balance1, _reserve0, _reserve1);
 
+        if (feeOn) kLast = uint(reserve0 * reserve1);
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
@@ -186,7 +189,7 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
             abi.encodeWithSelector(SELECTOR, to, amount)
         );
 
-        if (success || (data.length == 0 || abi.decode(data, (bool))))
+        if (!success || !(data.length == 0 || abi.decode(data, (bool))))
             revert TransferFailed();
     }
 
