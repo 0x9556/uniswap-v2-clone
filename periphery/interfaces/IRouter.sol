@@ -2,6 +2,9 @@
 pragma solidity ^0.8.21;
 
 interface IRouter {
+    error Expired();
+    error InsufficientAmount(string);
+
     function factory() external view returns (address);
 
     function weth() external view returns (address);
