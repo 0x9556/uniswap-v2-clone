@@ -120,11 +120,11 @@ library SwapHelper {
         address factory,
         uint amountOut,
         address[] memory path
-    ) internal view returns (uint[] memory amountsIn) {
+    ) internal view returns (uint[] memory amounts) {
         uint length = path.length;
         if (length < 2) revert InvalidPath();
-        amountsIn = new uint[](length);
-        amountsIn[length - 1] = amountOut;
+        amounts = new uint[](length);
+        amounts[length - 1] = amountOut;
 
         for (uint i = length - 1; i > 0; ) {
             (uint reserveIn, uint reserveOut) = getReserves(
@@ -133,7 +133,7 @@ library SwapHelper {
                 path[i]
             );
 
-            amountsIn[i - 1] = getAmountIn(amountsIn[i], reserveIn, reserveOut);
+            amounts[i - 1] = getAmountIn(amounts[i], reserveIn, reserveOut);
             unchecked {
                 --i;
             }

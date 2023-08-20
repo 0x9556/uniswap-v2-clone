@@ -1,33 +1,32 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.21;
 
-import "./interfaces/IFactory.sol";
+import "../core/interfaces/IFactory.sol";
+
 import "./libraries/SwapHelper.sol";
 import "./libraries/TransferHelper.sol";
-import "./interfaces/IPair.sol";
+
+import "./interfaces/IRouter.sol";
 import "./interfaces/IWETH.sol";
 
-contract Router {
+contract Router01 is IRouter {
     address public immutable factory;
     address public immutable WETH;
 
-    modifier checkIfPairCreated(address tokenA, address tokenB) {
-        if (IFactory(factory).pairs(tokenA, tokenB) == address(0)) {
-            IFactory(factory).createPair(tokenA, tokenB);
-        }
+    modifier ensure(uint deadline) {
+        if (deadline < block.timestamp) revert Expired();
         _;
     }
 
-    constructor(address _factory, address _WETH) {
+    constructor(address _factory, address weth) {
         factory = _factory;
-        WETH = _WETH;
+        WETH = weth;
     }
 
     receive() external payable {
         assert(msg.sender == WETH);
     }
 
-    // add liquidity
     function addLiquidity(
         address tokenA,
         address tokenB,
@@ -35,13 +34,14 @@ contract Router {
         uint amountBDesired,
         uint amountAMin,
         uint amountBMin,
-        address to
+        address to,
+        uint deadline
     )
         external
-        checkIfPairCreated(tokenA, tokenB)
+        ensure(deadline)
         returns (uint amountA, uint amountB, uint liquidity)
     {
-        (amountA, amountB) = _calculateLiquidity(
+        (amountA, amountB) = calculateAmount(
             tokenA,
             tokenB,
             amountADesired,
@@ -49,6 +49,7 @@ contract Router {
             amountAMin,
             amountBMin
         );
+
         address pair = SwapHelper.pairFor(factory, tokenA, tokenB);
 
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
@@ -62,14 +63,15 @@ contract Router {
         uint amountTokenDesired,
         uint amountTokenMin,
         uint amountETHMin,
-        address to
+        address to,
+        uint deadline
     )
         external
         payable
-        checkIfPairCreated(token, WETH)
+        ensure(deadline)
         returns (uint amountToken, uint amountETH, uint liquidity)
     {
-        (amountToken, amountETH) = _calculateLiquidity(
+        (amountToken, amountETH) = calculateAmount(
             token,
             WETH,
             amountTokenDesired,
@@ -77,38 +79,42 @@ contract Router {
             amountTokenMin,
             amountETHMin
         );
+
         address pair = SwapHelper.pairFor(factory, token, WETH);
-        TransferHelper.safeTransferFrom(token, msg.sender, to, amountToken);
+
         IWETH(WETH).deposit{value: amountETH}();
-        assert(IWETH(WETH).transfer(pair, amountETH));
+
+        TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
+        TransferHelper.safeTransfer(WETH, pair, amountETH);
+
         liquidity = IPair(pair).mint(to);
 
-        if (msg.value > amountETH)
+        if (msg.value > amountETH) {
             TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
+        }
     }
 
-    //removeliquidity
     function removeLiquidity(
         address tokenA,
         address tokenB,
         uint liquidity,
         uint amountAMin,
         uint amountBMin,
-        address to
-    ) public returns (uint amountA, uint amountB) {
-        //send LP to pair contract
+        address to,
+        uint deadline
+    ) public ensure(deadline) returns (uint amountA, uint amountB) {
+        //transfer liquidity to pair contract
         address pair = SwapHelper.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(pair, msg.sender, pair, liquidity);
-        //burn
         (uint amount0, uint amount1) = IPair(pair).burn(to);
         (address token0, ) = SwapHelper.sortTokens(tokenA, tokenB);
-        (amountA, amountB) = token0 == tokenA
+
+        (amountA, amountB) = tokenA == token0
             ? (amount0, amount1)
             : (amount1, amount0);
-        require(
-            amountA >= amountAMin && amountB >= amountBMin,
-            "Insufficient Amount"
-        );
+
+        if (amountAMin > amountA) revert InsufficientAmount("A");
+        if (amountBMin > amountB) revert InsufficientAmount("B");
     }
 
     function removeLiquidityETH(
@@ -116,16 +122,19 @@ contract Router {
         uint liquidity,
         uint amountTokenMin,
         uint amountETHMin,
-        address to
-    ) public returns (uint amountToken, uint amountETH) {
+        address to,
+        uint deadline
+    ) public ensure(deadline) returns (uint amountToken, uint amountETH) {
         (amountToken, amountETH) = removeLiquidity(
             token,
             WETH,
             liquidity,
             amountTokenMin,
             amountETHMin,
-            address(this)
+            address(this),
+            deadline
         );
+
         TransferHelper.safeTransfer(token, to, amountToken);
         IWETH(WETH).withdraw(amountETH);
         TransferHelper.safeTransferETH(to, amountETH);
@@ -138,21 +147,32 @@ contract Router {
         uint amountAMin,
         uint amountBMin,
         address to,
+        uint deadline,
         bool approveMax,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (uint amountA, uint amountB) {
+    ) external ensure(deadline) returns (uint amountA, uint amountB) {
         address pair = SwapHelper.pairFor(factory, tokenA, tokenB);
-        uint amount = approveMax ? type(uint).max : liquidity;
-        IPair(pair).permit(msg.sender, address(this), amount, v, r, s);
+        uint approveAmount = approveMax ? type(uint).max : liquidity;
+
+        IPair(pair).permit(
+            msg.sender,
+            address(this),
+            approveAmount,
+            deadline,
+            v,
+            r,
+            s
+        );
         (amountA, amountB) = removeLiquidity(
             tokenA,
             tokenB,
             liquidity,
             amountAMin,
             amountBMin,
-            to
+            to,
+            deadline
         );
     }
 
@@ -162,205 +182,244 @@ contract Router {
         uint amountTokenMin,
         uint amountETHMin,
         address to,
+        uint deadline,
         bool approveMax,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (uint amountToken, uint amountETH) {
+    ) external ensure(deadline) returns (uint amountToken, uint amountETH) {
         address pair = SwapHelper.pairFor(factory, token, WETH);
-        uint amount = approveMax ? type(uint).max : liquidity;
-        IPair(pair).permit(msg.sender, address(this), amount, v, r, s);
+        uint approveAmount = approveMax ? type(uint).max : liquidity;
+
+        IPair(pair).permit(
+            msg.sender,
+            address(this),
+            approveAmount,
+            deadline,
+            v,
+            r,
+            s
+        );
+
         (amountToken, amountETH) = removeLiquidityETH(
             token,
             liquidity,
             amountTokenMin,
             amountETHMin,
-            to
+            to,
+            deadline
         );
     }
 
-    //swap
+    function _swap(
+        address[] calldata path,
+        uint[] memory amounts,
+        address to
+    ) private {
+        for (uint i = 0; i < path.length - 1; ) {
+            (address tokenIn, address tokenOut) = (path[i], path[i + 1]);
+            uint amountOut = amounts[i + 1];
+            address pair = SwapHelper.pairFor(factory, tokenIn, tokenOut);
+
+            (address token0, ) = SwapHelper.sortTokens(tokenIn, tokenOut);
+            (uint amount0Out, uint amount1Out) = token0 == tokenIn
+                ? (uint(0), amountOut)
+                : (amountOut, uint(0));
+            address _to = i < path.length - 2
+                ? to
+                : SwapHelper.pairFor(factory, path[i + 1], path[i + 2]);
+
+            IPair(pair).swap(amount0Out, amount1Out, _to, new bytes(0));
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
     function swapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
-        address to
-    ) external {
-        uint[] memory amounts = SwapHelper.getAmountsOut(
-            factory,
-            amountIn,
-            path
-        );
+        address to,
+        uint deadline
+    ) public ensure(deadline) returns (uint[] memory amounts) {
+        uint length = path.length;
+        address pair = SwapHelper.pairFor(factory, path[0], path[1]);
+        amounts = SwapHelper.getAmountsOut(factory, amountIn, path);
 
-        require(
-            amounts[path.length - 1] > amountOutMin,
-            "InsufficientOutputAmount"
-        );
+        if (amounts[length - 1] < amountOutMin)
+            revert InsufficientAmount("OUTPUT");
+        if (path[0] == WETH) {
+            TransferHelper.safeTransfer(WETH, pair, amountIn);
+        } else {
+            TransferHelper.safeTransferFrom(
+                path[0],
+                msg.sender,
+                pair,
+                amountIn
+            );
+        }
 
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapHelper.pairFor(factory, path[0], path[1]),
-            amounts[0]
-        );
-
-        _swap(amounts, path, to);
+        _swap(path, amounts, to);
     }
 
     function swapExactTokensForETH(
         uint amountIn,
         uint amountOutMin,
         address[] calldata path,
-        address to
-    ) external {
-        require(path[path.length - 1] == WETH, "INVALID_PATH");
-        uint[] memory amounts = SwapHelper.getAmountsOut(
-            factory,
+        address to,
+        uint deadline
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        uint length = path.length;
+        if (path[length - 1] != WETH) revert InvalidPath();
+
+        amounts = swapExactTokensForTokens(
             amountIn,
-            path
+            amountOutMin,
+            path,
+            address(this),
+            deadline
         );
-        uint amountOut = amounts[path.length - 1];
-        require(amountOut >= amountOutMin, "InsufficientOutputAmount");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapHelper.pairFor(factory, path[0], path[1]),
-            amountIn
-        );
-        _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amountOut);
-        TransferHelper.safeTransferETH(to, amountOut);
+
+        uint amountETH = amounts[length - 1];
+        IWETH(WETH).withdraw(amountETH);
+        TransferHelper.safeTransferETH(to, amountETH);
     }
 
     function swapExactETHForTokens(
-        uint amountIn,
         uint amountOutMin,
         address[] calldata path,
-        address to
-    ) external {
-        require(path[0] == WETH, "INVALID_PATH");
-        uint[] memory amounts = SwapHelper.getAmountsOut(
-            factory,
+        address to,
+        uint deadline
+    ) external payable ensure(deadline) returns (uint[] memory amounts) {
+        if (path[0] != WETH) revert InvalidPath();
+        uint amountIn = msg.value;
+        IWETH(WETH).deposit();
+        amounts = swapExactTokensForTokens(
             amountIn,
-            path
+            amountOutMin,
+            path,
+            to,
+            deadline
         );
-        require(
-            amounts[path.length - 1] > amountOutMin,
-            "InsufficientOutputAmount"
-        );
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(
-            IWETH(WETH).transfer(
-                SwapHelper.pairFor(factory, path[0], path[1]),
-                amounts[0]
-            )
-        );
-        _swap(amounts, path, to);
     }
 
     function swapTokensForExactTokens(
         uint amountOut,
         uint amountInMax,
         address[] calldata path,
-        address to
-    ) external {
-        uint[] memory amounts = SwapHelper.getAmountsIn(
-            factory,
-            amountOut,
-            path
-        );
-        uint amountIn = amounts[0];
-        require(amountIn <= amountInMax, "ExcessiveInputAmount");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapHelper.pairFor(address(factory), path[0], path[1]),
-            amountIn
-        );
-        _swap(amounts, path, to);
+        address to,
+        uint deadline
+    ) public ensure(deadline) returns (uint[] memory amounts) {
+        address pair = SwapHelper.pairFor(factory, path[0], path[1]);
+        amounts = SwapHelper.getAmountsIn(factory, amountOut, path);
+        if (amountInMax < amounts[0]) revert InsufficientAmount("INPUT");
+        if (path[0] == WETH) {
+            TransferHelper.safeTransfer(WETH, pair, amounts[0]);
+        } else {
+            TransferHelper.safeTransferFrom(
+                path[0],
+                msg.sender,
+                pair,
+                amounts[0]
+            );
+        }
+
+        _swap(path, amounts, to);
     }
 
     function swapTokensForExactETH(
         uint amountOut,
         uint amountInMax,
         address[] calldata path,
-        address to
-    ) external {
-        require(path[path.length - 1] == WETH, "INVALID_PATH");
-        uint[] memory amounts = SwapHelper.getAmountsIn(
-            factory,
+        address to,
+        uint deadline
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        uint length = path.length;
+        if (path[length - 1] != WETH) revert InvalidPath();
+        amounts = swapTokensForExactTokens(
             amountOut,
-            path
+            amountInMax,
+            path,
+            address(this),
+            deadline
         );
-        uint amountIn = amounts[0];
-        require(amountIn <= amountInMax, "ExcessiveInputAmount");
-        TransferHelper.safeTransferFrom(
-            path[0],
-            msg.sender,
-            SwapHelper.pairFor(factory, path[0], path[1]),
-            amountIn
-        );
-        _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amountOut);
-        TransferHelper.safeTransferETH(to, amountOut);
+        uint amountETH = amounts[length - 1];
+        IWETH(WETH).withdraw(amountETH);
+        TransferHelper.safeTransferETH(to, amountETH);
     }
 
     function swapETHForExactTokens(
         uint amountOut,
-        uint amountInMax,
         address[] calldata path,
-        address to
-    ) external {
-        require(path[0] == WETH, "INVALID_PATH");
-        uint[] memory amounts = SwapHelper.getAmountsIn(
-            factory,
+        address to,
+        uint deadline
+    ) external payable ensure(deadline) returns (uint[] memory amounts) {
+        if (path[0] != WETH) revert InvalidPath();
+        IWETH(WETH).deposit();
+        amounts = swapTokensForExactTokens(
             amountOut,
-            path
+            msg.value,
+            path,
+            to,
+            deadline
         );
-        uint amountIn = amounts[0];
-        require(amountIn <= amountInMax, "ExcessiveInputAmount");
-        IWETH(WETH).deposit{value: amountIn}();
-        assert(
-            IWETH(WETH).transfer(
-                SwapHelper.pairFor(factory, path[0], path[1]),
-                amountIn
-            )
-        );
-        _swap(amounts, path, to);
+        uint amountETH = amounts[0];
+
+        if (msg.value - amountETH > 0)
+            TransferHelper.safeTransferETH(to, amountETH);
     }
 
-    function _swap(
-        uint[] memory amounts,
-        address[] calldata path,
-        address _to
-    ) private {
-        for (uint i; i < path.length - 1; i++) {
-            (address input, address output) = (path[i], path[i + 1]);
-            (address token0, ) = SwapHelper.sortTokens(input, output);
-            uint amountOut = amounts[i + 1];
-            (uint amount0Out, uint amount1Out) = input == token0
-                ? (uint(0), amountOut)
-                : (amountOut, uint(0));
-            address to = i < path.length - 2
-                ? SwapHelper.pairFor(factory, output, path[i + 2])
-                : _to;
-            IPair(SwapHelper.pairFor(factory, input, output)).swap(
-                amount0Out,
-                amount1Out,
-                to,
-                new bytes(0)
-            );
-        }
+    function quote(
+        uint amountA,
+        uint reserveA,
+        uint reserveB
+    ) public pure returns (uint amountB) {
+        amountB = SwapHelper.quote(amountA, reserveA, reserveB);
     }
 
-    function _calculateLiquidity(
+    function getAmountIn(
+        uint amountOut,
+        uint reserveIn,
+        uint reserveOut
+    ) public pure returns (uint amountIn) {
+        amountIn = SwapHelper.getAmountIn(amountOut, reserveIn, reserveOut);
+    }
+
+    function getAmountOut(
+        uint amountIn,
+        uint reserveIn,
+        uint reserveOut
+    ) public pure returns (uint amountOut) {
+        amountOut = SwapHelper.getAmountOut(amountIn, reserveIn, reserveOut);
+    }
+
+    function getAmountsIn(
+        uint amountOut,
+        address[] calldata path
+    ) public view returns (uint[] memory amountsIn) {
+        amountsIn = SwapHelper.getAmountsIn(factory, amountOut, path);
+    }
+
+    function getAmountsOut(
+        uint amountIn,
+        address[] calldata path
+    ) public view returns (uint[] memory amountsOut) {
+        amountsOut = SwapHelper.getAmountsOut(factory, amountIn, path);
+    }
+
+    //private
+    function calculateAmount(
         address tokenA,
         address tokenB,
         uint amountADesired,
         uint amountBDesired,
         uint amountAMin,
         uint amountBMin
-    ) private view returns (uint amountA, uint amountB) {
+    ) private returns (uint amountA, uint amountB) {
+        if (IFactory(factory).pairs(tokenA, tokenB) == address(0)) {
+            IFactory(factory).createPair(tokenA, tokenB);
+        }
         (uint reserveA, uint reserveB) = SwapHelper.getReserves(
             factory,
             tokenA,
@@ -369,22 +428,14 @@ contract Router {
         if (reserveA == 0 && reserveB == 0) {
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
-            uint amountBOptimal = SwapHelper.quote(
-                amountADesired,
-                reserveA,
-                reserveB
-            );
+            uint amountBOptimal = quote(amountADesired, reserveA, reserveB);
             if (amountBOptimal <= amountBDesired) {
-                require(amountBOptimal > amountBMin, "INSUFFICIENT_B_AMOUNT");
+                if (amountBOptimal < amountBMin) revert InsufficientAmount("B");
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
-                uint amountAOptimal = SwapHelper.quote(
-                    amountBDesired,
-                    reserveB,
-                    reserveA
-                );
+                uint amountAOptimal = quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
-                require(amountAOptimal >= amountAMin, "INSUFFICIENT_A_AMOUNT");
+                if (amountAOptimal < amountAMin) revert InsufficientAmount("A");
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
             }
         }

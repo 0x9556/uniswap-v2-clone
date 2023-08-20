@@ -3,11 +3,12 @@ pragma solidity ^0.8.21;
 
 interface IRouter {
     error Expired();
+    error InvalidPath();
     error InsufficientAmount(string);
 
     function factory() external view returns (address);
 
-    function weth() external view returns (address);
+    function WETH() external view returns (address);
 
     function addLiquidity(
         address tokenA,
@@ -23,7 +24,6 @@ interface IRouter {
     function addLiquidityETH(
         address token,
         uint amountTokenDesired,
-        uint amountETHDesired,
         uint amountTokenMin,
         uint amountETHMin,
         address to,
