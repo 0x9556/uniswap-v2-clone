@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.17;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "forge-std/Test.sol";
 import "../core/Pair.sol";
 import "../core/Factory.sol";
-
-contract ERC20Test is ERC20 {
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
-
-    function mint(address to, uint value) external {
-        _mint(to, value);
-    }
-}
+import "./ERC20Mintable.sol";
 
 contract PairTest is Test {
     Factory factory;
@@ -22,8 +14,8 @@ contract PairTest is Test {
 
     function setUp() public {
         factory = new Factory(msg.sender);
-        ERC20Test tokenA = new ERC20Test("TestToken", "T1");
-        ERC20Test tokenB = new ERC20Test("TestToken", "T2");
+        ERC20Mintable tokenA = new ERC20Mintable("TestToken", "T1");
+        ERC20Mintable tokenB = new ERC20Mintable("TestToken", "T2");
 
         tokenA.mint(address(this), 10000 * 10 ** 18);
         tokenB.mint(address(this), 10000 * 10 ** 18);
@@ -43,8 +35,8 @@ contract PairTest is Test {
         uint expectLiquidity = 2 ether;
         addLiquidity(token0Amount, token1Amount);
 
-        assertEq(ERC20Test(token0).balanceOf(pair), token0Amount);
-        assertEq(ERC20Test(token1).balanceOf(pair), token1Amount);
+        assertEq(ERC20Mintable(token0).balanceOf(pair), token0Amount);
+        assertEq(ERC20Mintable(token1).balanceOf(pair), token1Amount);
         assertEq(Pair(pair).totalSupply(), 2 ether);
         assertEq(
             Pair(pair).balanceOf(address(this)),
@@ -68,25 +60,25 @@ contract PairTest is Test {
 
         assertEq(Pair(pair).balanceOf(address(this)), 0);
         assertEq(Pair(pair).totalSupply(), MINIMUM_LIQUIDITY);
-        assertEq(ERC20Test(token0).balanceOf(pair), 1000);
-        assertEq(ERC20Test(token1).balanceOf(pair), 1000);
+        assertEq(ERC20Mintable(token0).balanceOf(pair), 1000);
+        assertEq(ERC20Mintable(token1).balanceOf(pair), 1000);
 
-        uint token0TotalSupply = ERC20Test(token0).totalSupply();
-        uint token1TotalSupply = ERC20Test(token1).totalSupply();
+        uint token0TotalSupply = ERC20Mintable(token0).totalSupply();
+        uint token1TotalSupply = ERC20Mintable(token1).totalSupply();
         assertEq(
-            ERC20Test(token0).balanceOf(address(this)),
+            ERC20Mintable(token0).balanceOf(address(this)),
             token0TotalSupply - 1000
         );
         assertEq(
-            ERC20Test(token1).balanceOf(address(this)),
+            ERC20Mintable(token1).balanceOf(address(this)),
             token1TotalSupply - 1000
         );
     }
 
     //internal
     function addLiquidity(uint token0Amount, uint token1Amount) private {
-        ERC20Test(token0).transfer(pair, token0Amount);
-        ERC20Test(token1).transfer(pair, token1Amount);
+        ERC20Mintable(token0).transfer(pair, token0Amount);
+        ERC20Mintable(token1).transfer(pair, token1Amount);
         Pair(pair).mint(address(this));
     }
 }
