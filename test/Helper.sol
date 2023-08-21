@@ -1,30 +1,39 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.21;
 
+import "solmate/tokens/WETH.sol";
 import "./ERC20Mintable.sol";
 import "../periphery/libraries/SwapHelper.sol";
-import "../core/Factory.sol";
+import "../core/interfaces/IFactory.sol";
 
 library Helper {
     function createPair(
+        address factory,
         uint amountA,
         uint amountB
-    )
-        internal
-        returns (address token0, address token1, address factory, address pair)
-    {
-        ERC20Mintable tokenA = new ERC20Mintable("TestToken", "TA");
-        ERC20Mintable tokenB = new ERC20Mintable("TestToken", "TB");
-        tokenA.mint(msg.sender, amountA);
-        tokenB.mint(msg.sender, amountB);
+    ) internal returns (address pair, address tokenA, address tokenB) {
+        ERC20Mintable _tokenA = new ERC20Mintable("TestToken", "TA");
+        ERC20Mintable _tokenB = new ERC20Mintable("TestToken", "TB");
 
-        (token0, token1) = SwapHelper.sortTokens(
-            address(tokenA),
-            address(tokenB)
-        );
+        _tokenA.mint(msg.sender, amountA);
+        _tokenB.mint(msg.sender, amountB);
 
-        Factory _factory = new Factory(msg.sender);
-        pair = _factory.createPair(address(tokenA), address(tokenB));
-        factory = address(_factory);
+        (tokenA, tokenB) = (address(_tokenA), address(_tokenB));
+
+        pair = IFactory(factory).createPair(tokenA, tokenB);
+    }
+
+    function createWETHPair(
+        address factory,
+        uint amountToken
+    ) internal returns (address pair, address token, address weth) {
+        ERC20Mintable _token = new ERC20Mintable("TestToken", "T");
+        WETH _weth = new WETH();
+
+        _token.mint(msg.sender, amountToken);
+
+        (token, weth) = (address(_token), address(_weth));
+
+        pair = IFactory(factory).createPair(token, weth);
     }
 }

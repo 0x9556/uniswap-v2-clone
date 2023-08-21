@@ -9,7 +9,7 @@ import "./libraries/TransferHelper.sol";
 import "./interfaces/IRouter.sol";
 import "./interfaces/IWETH.sol";
 
-contract Router01 is IRouter {
+contract Router is IRouter {
     address public immutable factory;
     address public immutable WETH;
 
@@ -152,7 +152,7 @@ contract Router01 is IRouter {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external ensure(deadline) returns (uint amountA, uint amountB) {
+    ) external returns (uint amountA, uint amountB) {
         address pair = SwapHelper.pairFor(factory, tokenA, tokenB);
         uint approveAmount = approveMax ? type(uint).max : liquidity;
 
