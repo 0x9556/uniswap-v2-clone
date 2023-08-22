@@ -1,59 +1,36 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
 pragma solidity ^0.8.21;
 
-import "forge-std/Test.sol";
-import "solmate/tokens/ERC20.sol";
-import "../periphery/Router.sol";
-import "../core/Factory.sol";
+import "./RouterHelper.sol";
 
-import "./ERC20Mintable.sol";
-import "./Helper.sol";
-
-contract RouterTest is Test {
-    address tokenA;
-    address tokenB;
-    address weth;
-    address wethPartner;
-    address factory;
-    address router;
-    address pair;
-    address wethPair;
-
-    function setUp() public {
-        factory = address(new Factory(msg.sender));
-        (pair, tokenA, tokenB) = Helper.createPair(
-            factory,
-            10000 ether,
-            10000 ether
-        );
-        (wethPair, wethPartner, weth) = Helper.createWETHPair(
-            factory,
-            10000 ether
-        );
-        router = address(new Router(factory, weth));
-    }
-
+contract RouterTest is RouterHelper {
     function test_factory_WETH() public {
-        assertEq(IRouter(router).factory(), factory);
-        assertEq(IRouter(router).WETH(), weth);
+        assertEq(router.factory(), address(factory));
+        assertEq(router.WETH(), address(weth));
     }
 
     function test_addLiquidity() public {
-        ERC20(tokenA).approve(address(this), type(uint).max);
-        ERC20(tokenB).approve(address(this), type(uint).max);
+        ERC20(tokenA).approve(address(router), type(uint).max);
+        ERC20(tokenB).approve(address(router), type(uint).max);
 
-        (, , uint liquidity) = IRouter(router).addLiquidity(
-            tokenA,
-            tokenB,
-            1 ether,
-            4 ether,
-            0,
-            0,
-            msg.sender,
-            type(uint).max
-        );
-        uint expectLiquidity = 2 ether - IPair(pair).MINIMUM_LIQUIDITY();
+        uint tokenAAmount = 1 ether;
+        uint tokenBAmount = 4 ether;
+        uint expectLiquidity = 2 ether - MINIMUM_LIQUIDITY;
+
+        (uint amountA, uint amountB, uint liquidity) = IRouter(router)
+            .addLiquidity(
+                address(tokenA),
+                address(tokenB),
+                tokenAAmount,
+                tokenBAmount,
+                0,
+                0,
+                address(this),
+                type(uint).max
+            );
 
         assertEq(liquidity, expectLiquidity);
+        assertEq(amountA, 1 ether);
+        assertEq(amountB, 4 ether);
     }
 }

@@ -2,14 +2,15 @@
 pragma solidity ^0.8.17;
 
 library TransferHelper {
+    error ApproveFaild();
+    error TransferFailed(string);
+
     function safeApprove(address token, address to, uint amount) internal {
         (bool success, bytes memory data) = token.call(
             abi.encodeWithSignature("approve(address,uint256)", to, amount)
         );
-        require(
-            success && (data.length == 0 || abi.decode(data, (bool))),
-            "Approve Failed"
-        );
+        if (!success || !(data.length == 0 || abi.decode(data, (bool))))
+            revert ApproveFaild();
     }
 
     function safeTransferFrom(
@@ -26,24 +27,20 @@ library TransferHelper {
                 amount
             )
         );
-        require(
-            success && (data.length == 0 || abi.decode(data, (bool))),
-            "TransferFrom Failed"
-        );
+        if (!success || !(data.length == 0 || abi.decode(data, (bool))))
+            revert TransferFailed("TRANSFER_FROM");
     }
 
     function safeTransfer(address token, address to, uint256 amount) internal {
         (bool success, bytes memory data) = token.call(
             abi.encodeWithSignature("transfer(address,uint256)", to, amount)
         );
-        require(
-            success && (data.length == 0 || abi.decode(data, (bool))),
-            "transfer failed"
-        );
+        if (!success || !(data.length == 0 || abi.decode(data, (bool))))
+            revert TransferFailed("TRANSFER");
     }
 
     function safeTransferETH(address to, uint amount) internal {
         (bool success, ) = to.call{value: amount}(new bytes(0));
-        require(success, "ETH transfer failed");
+        if (!success) revert TransferFailed("ETH");
     }
 }

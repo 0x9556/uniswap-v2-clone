@@ -36,7 +36,7 @@ library SwapHelper {
                             hex"ff",
                             factory,
                             keccak256(abi.encodePacked(token0, token1)),
-                            hex"895250781f3d96785fe028fb3ca8feaa193a0a7394f1f5fb30566cb441487b49"
+                            hex"13f45df4b6b19b6947688012745b7ec3211461d9795b75867c583d927d0d1b64"
                         )
                     )
                 )
@@ -53,8 +53,8 @@ library SwapHelper {
         address pair = pairFor(factory, token0, token1);
         (uint reserve0, uint reserve1, ) = IPair(pair).getReserves();
         (reserveA, reserveB) = tokenA == token0
-            ? ((reserve0), (reserve1))
-            : ((reserve1), (reserve0));
+            ? (reserve0, reserve1)
+            : (reserve1, reserve0);
     }
 
     function quote(

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.21;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
 import "./LPERC20.sol";
 import "./libraries/Q112X112.sol";
 import "./interfaces/ISwapCallee.sol";
@@ -29,12 +30,12 @@ contract Pair is IPair, LPERC20, ReentrancyGuard {
     uint public price1CumulativeLast;
     uint public kLast;
 
-    function getReserves() public view returns (uint112, uint112, uint32) {
-        return (reserve0, reserve1, blockTimestampLast);
-    }
-
     constructor() {
         factory = msg.sender;
+    }
+
+    function getReserves() public view returns (uint112, uint112, uint32) {
+        return (reserve0, reserve1, blockTimestampLast);
     }
 
     function initialize(address _token0, address _token1) external {
